@@ -19,7 +19,7 @@ interface AuthState {
 
 export const useAuth = create<AuthState>((set) => ({
     user: null,
-    accessToken: null,
+    accessToken: localStorage.getItem('accessToken'),
     loading: false,
 
     login: async (email, password) => {
@@ -28,8 +28,9 @@ export const useAuth = create<AuthState>((set) => ({
             const res = await axios.post(
                 `${import.meta.env.VITE_BACKEND_URL}/auth/login`,
                 { email, password },
-                { withCredentials: true }, // ⬅️ penting agar cookie refreshToken dikirim
+                { withCredentials: true }
             );
+            localStorage.setItem('accessToken', res.data.accessToken);
             set({
                 user: res.data.user,
                 accessToken: res.data.accessToken,
@@ -57,36 +58,39 @@ export const useAuth = create<AuthState>((set) => ({
     },
 
     logout: () => {
+        localStorage.removeItem('accessToken');
         set({ user: null, accessToken: null });
     },
 
     fetchMe: async () => {
         try {
+            const token = useAuth.getState().accessToken;
             const res = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/auth/me`, {
                 headers: {
-                    Authorization: `Bearer ${useAuth.getState().accessToken}`,
+                    Authorization: `Bearer ${token}`,
                 },
                 withCredentials: true,
             });
             set({ user: res.data.user });
         } catch {
-            // attempt refresh token
             try {
                 const refreshRes = await axios.post(
                     `${import.meta.env.VITE_BACKEND_URL}/auth/refresh`,
                     {},
-                    { withCredentials: true },
+                    { withCredentials: true }
                 );
-                set({ accessToken: refreshRes.data.accessToken });
+                const newToken = refreshRes.data.accessToken;
+                localStorage.setItem('accessToken', newToken);
+                set({ accessToken: newToken });
 
-                // re-fetch
                 const retry = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/auth/me`, {
                     headers: {
-                        Authorization: `Bearer ${refreshRes.data.accessToken}`,
+                        Authorization: `Bearer ${newToken}`,
                     },
                 });
                 set({ user: retry.data.user });
             } catch (err) {
+                localStorage.removeItem('accessToken');
                 set({ user: null, accessToken: null });
             }
         }
